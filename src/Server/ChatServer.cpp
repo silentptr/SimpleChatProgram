@@ -1,7 +1,5 @@
 #include "SCP/Server/ChatServer.h"
 
-using boost::asio::co_spawn;
-
 // references:
 // https://www.boost.org/doc/libs/1_88_0/doc/html/boost_asio/example/cpp20/coroutines/echo_server.cpp
 
@@ -35,28 +33,52 @@ namespace SCP::Server
             {
                 break;
             }
+
+            m_ChatRoom->GetEventHandler().OnChatMessage(std::string(m_Buffer, msgLen));
         }
 
         m_ChatRoom->RemoveClient(m_UUID);
     }
 
-    boost::asio::awaitable<void> ChatRoom::CreateClient(boost::asio::ip::tcp::socket sock)
+    std::shared_ptr<Client> Client::Create(std::shared_ptr<ChatRoom> cr, boost::uuids::uuid uuid, std::string name, boost::asio::ip::tcp::socket s)
     {
-        auto uuid = boost::uuids::random_generator()();
-        //auto pair = m_Clients.emplace(uuid, std::make_shared<Client>(shared_from_this(), uuid, std::move(sock)));
-        auto pair = m_Clients.emplace(uuid, Client::Create(shared_from_this(), uuid, std::move(sock)));
-        auto executor = co_await boost::asio::this_coro::executor;
-        boost::asio::co_spawn(executor, (*pair.first).second->DoRead(), boost::asio::detached);
+        return std::make_shared<Client>(Private(), cr, uuid, name, std::move(s));
     }
 
-    ChatServer::ChatServer() : m_IOCtx(1), m_Running(false)
+    boost::asio::awaitable<void> ChatRoom::CreateClient(boost::asio::ip::tcp::socket sock, std::string name)
+    {
+        auto uuid = boost::uuids::random_generator()();
+        auto [error, write] = co_await boost::asio::async_write(sock, boost::asio::buffer(uuid.data(), uuid.size()), boost::asio::as_tuple(boost::asio::use_awaitable));
+
+        if (error != boost::system::errc::success || write != uuid.size())
+        {
+            try
+            {
+                sock.shutdown(boost::asio::socket_base::shutdown_both);
+            }
+            catch(...){ }
+            try
+            {
+                sock.close();
+            }
+            catch(...){ }
+            
+            co_return;
+        }
+
+        auto client = Client::Create(shared_from_this(), uuid, name, std::move(sock));
+        m_Clients[uuid] = client;
+        co_await client->DoRead();
+    }
+
+    ChatServer::ChatServer(ChatServerEventHandler& h) : m_IOCtx(1), m_Running(false), m_EventHandler(h), m_ChatRoom(ChatRoom::Create(m_EventHandler))
     {
         
     }
 
     ChatServer::~ChatServer()
     {
-        m_IOCtx.stop();
+        Stop();
     }
 
     bool ChatServer::Start(std::uint16_t port)
@@ -69,18 +91,18 @@ namespace SCP::Server
         m_Running = true;
         m_Port = port;
         boost::asio::co_spawn(m_IOCtx, ServerLoop(), boost::asio::detached);
-        m_ServerThread = boost::thread(boost::bind(&ChatServer::ServerLoop, this));
-        m_IOCtx.restart();
-        m_IOCtx.run();
+        m_ServerThread = std::thread([&](){ m_IOCtx.restart(); m_IOCtx.run(); });
         return true;
     }
 
     bool ChatServer::Stop()
     {
-        if (m_Running)
+        bool expected = true;
+
+        if (m_Running.compare_exchange_strong(expected, false))
         {
-            m_Running = false;
             m_IOCtx.stop();
+            m_ServerThread.join();
             return true;
         }
         else
@@ -91,19 +113,26 @@ namespace SCP::Server
 
     boost::asio::awaitable<void> ChatServer::ServerLoop()
     {
-        auto executor = co_await boost::asio::this_coro::executor;
-        boost::asio::ip::tcp::acceptor acceptor(executor, {boost::asio::ip::tcp::v4(), m_Port});
-
-        while (true)
+        try
         {
-            auto [error, sock] = co_await acceptor.async_accept(boost::asio::as_tuple(boost::asio::use_awaitable));
+            auto executor = co_await boost::asio::this_coro::executor;
+            boost::asio::ip::tcp::acceptor acceptor(executor, {boost::asio::ip::tcp::v4(), m_Port});
 
-            if (error == boost::asio::error::shut_down)
+            while (m_Running)
             {
-                break;
-            }
+                auto [error, sock] = co_await acceptor.async_accept(boost::asio::as_tuple(boost::asio::use_awaitable));
 
-            boost::asio::co_spawn(executor, HandleConn(std::move(sock)), boost::asio::detached);
+                if (error == boost::asio::error::shut_down)
+                {
+                    break;
+                }
+
+                boost::asio::co_spawn(executor, HandleConn(std::move(sock)), boost::asio::detached);
+            }
+        }
+        catch (const boost::system::system_error& e)
+        {
+            std::cerr << "Listening error: " << e.what() << '\n';
         }
     }
 
@@ -114,11 +143,20 @@ namespace SCP::Server
 
         if (error != boost::system::errc::success || read != 28 || std::memcmp(m_Header, buffer, 8) != 0)
         {
-            sock.shutdown(boost::asio::socket_base::shutdown_both);
-            sock.close();
+            try
+            {
+                sock.shutdown(boost::asio::socket_base::shutdown_both);
+            }
+            catch(...){ }
+            try
+            {
+                sock.close();
+            }
+            catch(...){ }
             co_return;
         }
 
-        co_await m_ChatRoom->CreateClient(std::move(sock));
+        std::string name(buffer + sizeof(m_Header));
+        co_await m_ChatRoom->CreateClient(std::move(sock), name);
     }
 }

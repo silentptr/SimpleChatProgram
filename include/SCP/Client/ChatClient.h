@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include <string>
+#include <atomic>
+#include <optional>
+#include <thread>
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -16,12 +19,14 @@ namespace SCP::Client
 {
     class ChatClientEventHandler
     {
-    
+    public:
+        // empty if success, otherwise contains an error message
+        virtual void OnConnect(std::optional<std::string>) = 0;
     };
 
-    enum class ChatClientState
+    enum class ChatClientState : std::uint8_t
     {
-        Inactive, Connecting, Connected
+        Inactive = 0, Connecting = 1, Connected = 2
     };
 
     class ChatClient
@@ -32,26 +37,25 @@ namespace SCP::Client
         ChatClientEventHandler& m_EventHandler;
     
         boost::asio::io_context m_IOCtx;
+        std::thread m_Thread;
+        boost::asio::ip::tcp::resolver m_Resolver;
         boost::thread m_ServerThread;
         boost::asio::ip::tcp::socket m_Socket;
-        ChatClientState m_State;
+        std::atomic<ChatClientState> m_State;
+        std::string m_IP;
         std::uint16_t m_Port;
+        std::string m_Username;
+        boost::uuids::uuid m_UUID;
 
-        boost::asio::awaitable<void> DoConnect(const std::string&, std::uint16_t);
+        void SilentSockClose();
+        boost::asio::awaitable<void> DoConnect();
     public:
-        inline ChatClient(ChatClientEventHandler& handler) : m_IOCtx(1), m_Socket(m_IOCtx), m_EventHandler(handler), m_State(ChatClientState::Inactive)
-        {
-            m_IOCtx.run();
-        }
-
-        inline ~ChatClient()
-        {
-            m_IOCtx.stop();
-        }
+        ChatClient(ChatClientEventHandler&);
+        ~ChatClient();
 
         inline ChatClientState GetState() const noexcept { return m_State; }
 
-        bool Start(const std::string&, std::uint16_t);
+        bool Start(const std::string&, std::uint16_t, const std::string&);
         bool Stop();
     };
 }
