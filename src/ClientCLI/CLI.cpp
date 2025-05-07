@@ -1,28 +1,35 @@
-#include "SCP/ServerCLI/CLI.h"
+#include "SCP/ClientCLI/CLI.h"
 
 #include <ncurses.h>
 
-namespace SCP::ServerCLI
+namespace SCP::ClientCLI
 {
-    CLI::CLI() : m_Running(false), m_Server(*this)
+    CLI::CLI() : m_Client(*this), m_FinishedConnect(false)
     {
+        initscr();
         m_Messages.reserve(255);
     }
 
     CLI::~CLI()
     {
-        if (m_Running)
-        {
-            endwin();
-        }
+        endwin();
     }
 
     void CLI::Run()
     {
-        m_Running = true;
-        initscr();
         std::uint16_t port = 0;
+        std::string ip, username;
         char inputBuffer[32];
+
+        printw("Enter IP: ");
+        std::memset(inputBuffer, 0, sizeof(inputBuffer));
+        getnstr(inputBuffer, 31);
+        ip = inputBuffer;
+
+        if (ip.size() == 1 && (ip[0] == 'q' || ip[0] == 'Q'))
+        {
+            return;
+        }
 
         while (port == 0)
         {
@@ -48,10 +55,32 @@ namespace SCP::ServerCLI
         }
 
         clear();
-        printw("Starting server on port %hu...\n", port);
+        printw("Enter username: ");
+        std::memset(inputBuffer, 0, sizeof(inputBuffer));
+        getnstr(inputBuffer, 19);
+        username = inputBuffer;
+
+        m_Client.Start(ip, port, username);
+
+        clear();
+        printw("Connecting to %s:%hu...\n", ip.c_str(), port);
         refresh();
-        m_Server.Start(port);
-        nodelay(stdscr, TRUE);
+
+        while (!m_FinishedConnect.load())
+        {
+            printw("test");
+            refresh();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        }
+
+        if (m_ConnectErr.has_value())
+        {
+            clear();
+            printw("Error when connecting: %s\n", m_ConnectErr.value().c_str());
+            printw("Press any key to continue...");
+            getch();
+            return;
+        }
 
         while (1)
         {
@@ -69,7 +98,7 @@ namespace SCP::ServerCLI
 
             erase();
             move(0, 0);
-            printw("Server listening on port %hu.\n\n", port);
+            printw("Connected to %s:%hu as %s", ip.c_str(), port, username.c_str());
 
             for (auto& message : m_Messages)
             {
@@ -94,8 +123,12 @@ namespace SCP::ServerCLI
 
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+    }
 
-        nodelay(stdscr, FALSE);
+    void CLI::OnConnect(std::optional<std::string> str)
+    {
+        m_ConnectErr = str;
+        m_FinishedConnect.store(true);
     }
 
     void CLI::OnChatMessage(std::string msg)

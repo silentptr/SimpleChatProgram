@@ -14,14 +14,18 @@
 #include <boost/asio/as_tuple.hpp>
 #include <boost/uuid.hpp>
 #include <boost/thread.hpp>
+#include <boost/endian.hpp>
 
 namespace SCP::Client
 {
     class ChatClientEventHandler
     {
     public:
+        ChatClientEventHandler() noexcept;
+        virtual ~ChatClientEventHandler() noexcept;
         // empty if success, otherwise contains an error message
-        virtual void OnConnect(std::optional<std::string>) = 0;
+        virtual void OnConnect(std::optional<std::string>);
+        virtual void OnChatMessage(std::string);
     };
 
     enum class ChatClientState : std::uint8_t
@@ -49,14 +53,20 @@ namespace SCP::Client
 
         void SilentSockClose();
         boost::asio::awaitable<void> DoConnect();
+        boost::asio::awaitable<void> DoRead();
+        boost::asio::awaitable<void> DoWrite(std::string);
+
+        unsigned char m_Buffer[65535];
     public:
         ChatClient(ChatClientEventHandler&);
         ~ChatClient();
 
-        inline ChatClientState GetState() const noexcept { return m_State; }
+        inline ChatClientState GetState() const noexcept { return m_State.load(); }
 
         bool Start(const std::string&, std::uint16_t, const std::string&);
         bool Stop();
+
+        void SendMessage(const std::string&);
     };
 }
 

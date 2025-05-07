@@ -18,13 +18,16 @@
 #include <boost/asio/as_tuple.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/uuid.hpp>
-#include <boost/thread.hpp>
+#include <boost/endian.hpp>
 
 namespace SCP::Server
 {
     class ChatServerEventHandler
     {
     public:
+        ChatServerEventHandler() noexcept;
+        virtual ~ChatServerEventHandler() noexcept;
+        
         virtual void OnChatMessage(std::string);
     };
 
@@ -38,14 +41,17 @@ namespace SCP::Server
         boost::uuids::uuid m_UUID;
         std::string m_Username;
         boost::asio::ip::tcp::socket m_Socket;
-        char m_Buffer[255];
+        unsigned char m_Buffer[65535];
     public:
         inline Client(Private, std::shared_ptr<ChatRoom> cr, boost::uuids::uuid uuid, std::string username, boost::asio::ip::tcp::socket s) : m_ChatRoom(cr), m_UUID(uuid), m_Username(std::move(username)), m_Socket(std::move(s)) { }
-        //~Client();
+        ~Client();
 
         static std::shared_ptr<Client> Create(std::shared_ptr<ChatRoom>, boost::uuids::uuid, std::string, boost::asio::ip::tcp::socket);
 
         boost::asio::awaitable<void> DoRead();
+        boost::asio::awaitable<void> SendMessage(const std::string&);
+
+        inline const std::string& GetUsername() const noexcept { return m_Username; }
     };
 
     class ChatRoom : public std::enable_shared_from_this<ChatRoom>
@@ -60,7 +66,8 @@ namespace SCP::Server
         inline static std::shared_ptr<ChatRoom> Create(ChatServerEventHandler& h) { return std::make_shared<ChatRoom>(Private(), h); }
 
         boost::asio::awaitable<void> CreateClient(boost::asio::ip::tcp::socket, std::string);
-        inline void RemoveClient(const boost::uuids::uuid& uuid) { m_Clients.erase(uuid); }
+        boost::asio::awaitable<void> RemoveClient(const boost::uuids::uuid&);
+        boost::asio::awaitable<void> BroadcastMessage(const std::string&);
 
         inline ChatServerEventHandler& GetEventHandler() noexcept { return m_EventHandler; }
     };
@@ -71,6 +78,7 @@ namespace SCP::Server
         static constexpr char m_Header[8] = {2, 3, 1, 77, 30, 115, 33, 49};
 
         boost::asio::io_context m_IOCtx;
+        boost::asio::ip::tcp::acceptor m_Acceptor;
         std::thread m_ServerThread;
         std::atomic_bool m_Running;
         std::uint16_t m_Port;
