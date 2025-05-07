@@ -17,9 +17,10 @@ set(SCP_CLIENT_SRC_FILES
     src/Client/ChatClient.cpp
 )
 
-# set(SCP_CLIENT_CLI_SRC_FILES
-#     src/ClientTest/TestMain.cpp
-# )
+set(SCP_CLIENT_CLI_SRC_FILES
+    src/ClientCLI/CLI.cpp
+    src/ClientCLI/Main.cpp
+)
 
 add_library(SCPServer STATIC ${SCP_SERVER_SRC_FILES})
 target_compile_features(SCPServer PUBLIC cxx_std_20)
@@ -35,6 +36,10 @@ target_compile_features(SCPClient PUBLIC cxx_std_20)
 target_include_directories(SCPClient PUBLIC include ${Boost_INCLUDE_DIRS})
 target_link_libraries(SCPClient PUBLIC ${Boost_LIBRARIES})
 
-# add_executable(SCPClientCLI ${SCP_CLIENT_CLI_SRC_FILES})
-# target_include_directories(SCPClientCLI PUBLIC ${Boost_INCLUDE_DIRS})
-# target_link_libraries(SCPClientCLI PUBLIC SCPClient ${Boost_LIBRARIES})
+# add_executable(SCPClientTest src/ClientTest/TestMain.cpp)
+# target_include_directories(SCPClientTest PUBLIC ${Boost_INCLUDE_DIRS})
+# target_link_libraries(SCPClientTest PUBLIC SCPClient ${Boost_LIBRARIES})
+
+add_executable(SCPClientCLI ${SCP_CLIENT_CLI_SRC_FILES})
+target_include_directories(SCPClientCLI PUBLIC ${Boost_INCLUDE_DIRS} ${CURSES_INCLUDE_DIRS})
+target_link_libraries(SCPClientCLI PUBLIC SCPClient ${Boost_LIBRARIES} ${CURSES_LIBRARIES})
