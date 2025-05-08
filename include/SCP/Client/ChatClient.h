@@ -6,6 +6,7 @@
 #include <atomic>
 #include <optional>
 #include <thread>
+#include <iostream>
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -13,7 +14,6 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/as_tuple.hpp>
 #include <boost/uuid.hpp>
-#include <boost/thread.hpp>
 #include <boost/endian.hpp>
 
 namespace SCP::Client
@@ -26,6 +26,7 @@ namespace SCP::Client
         // empty if success, otherwise contains an error message
         virtual void OnConnect(std::optional<std::string>);
         virtual void OnChatMessage(std::string);
+        virtual void OnDisconnect(std::optional<std::string>);
     };
 
     enum class ChatClientState : std::uint8_t
@@ -41,9 +42,8 @@ namespace SCP::Client
         ChatClientEventHandler& m_EventHandler;
     
         boost::asio::io_context m_IOCtx;
-        std::thread m_Thread;
+        std::jthread m_Thread;
         boost::asio::ip::tcp::resolver m_Resolver;
-        boost::thread m_ServerThread;
         boost::asio::ip::tcp::socket m_Socket;
         std::atomic<ChatClientState> m_State;
         std::string m_IP;
@@ -57,6 +57,8 @@ namespace SCP::Client
         boost::asio::awaitable<void> DoWrite(std::string);
 
         unsigned char m_Buffer[65535];
+
+        bool StopWithError(std::string);
     public:
         ChatClient(ChatClientEventHandler&);
         ~ChatClient();

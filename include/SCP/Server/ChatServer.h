@@ -49,7 +49,7 @@ namespace SCP::Server
         static std::shared_ptr<Client> Create(std::shared_ptr<ChatRoom>, boost::uuids::uuid, std::string, boost::asio::ip::tcp::socket);
 
         boost::asio::awaitable<void> DoRead();
-        boost::asio::awaitable<void> SendMessage(const std::string&);
+        boost::asio::awaitable<void> SendMessage(std::string);
 
         inline const std::string& GetUsername() const noexcept { return m_Username; }
     };
@@ -67,7 +67,7 @@ namespace SCP::Server
 
         boost::asio::awaitable<void> CreateClient(boost::asio::ip::tcp::socket, std::string);
         boost::asio::awaitable<void> RemoveClient(const boost::uuids::uuid&);
-        boost::asio::awaitable<void> BroadcastMessage(const std::string&);
+        boost::asio::awaitable<void> BroadcastMessage(std::string);
 
         inline ChatServerEventHandler& GetEventHandler() noexcept { return m_EventHandler; }
     };
@@ -79,7 +79,7 @@ namespace SCP::Server
 
         boost::asio::io_context m_IOCtx;
         boost::asio::ip::tcp::acceptor m_Acceptor;
-        std::thread m_ServerThread;
+        std::jthread m_ServerThread;
         std::atomic_bool m_Running;
         std::uint16_t m_Port;
 
@@ -87,8 +87,10 @@ namespace SCP::Server
 
         std::shared_ptr<ChatRoom> m_ChatRoom;
 
-        boost::asio::awaitable<void> ServerLoop();
+        void DoAccept();
         boost::asio::awaitable<void> HandleConn(boost::asio::ip::tcp::socket);
+        
+        void StopWithError(std::string);
     public:
         ChatServer(ChatServerEventHandler&);
         ~ChatServer();

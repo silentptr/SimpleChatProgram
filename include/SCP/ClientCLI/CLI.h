@@ -21,7 +21,10 @@ namespace SCP::ClientCLI
         std::vector<std::string> m_Messages;
         moodycamel::ConcurrentQueue<std::string> m_MsgQueue;
         std::atomic_bool m_FinishedConnect;
-        std::optional<std::string> m_ConnectErr;
+        std::optional<std::string> m_ErrMsg;
+        bool m_Connected;
+
+        void DoStuff();
     public:
         CLI();
         ~CLI();
@@ -30,6 +33,7 @@ namespace SCP::ClientCLI
 
         void OnConnect(std::optional<std::string>) override;
         void OnChatMessage(std::string) override;
+        void OnDisconnect(std::optional<std::string>) override;
     };
 }
 

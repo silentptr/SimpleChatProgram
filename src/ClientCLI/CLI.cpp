@@ -15,11 +15,13 @@ namespace SCP::ClientCLI
         endwin();
     }
 
-    void CLI::Run()
+    void CLI::DoStuff()
     {
+        nodelay(stdscr, false);
+        nocbreak();
         std::uint16_t port = 0;
         std::string ip, username;
-        char inputBuffer[32];
+        char inputBuffer[255];
 
         printw("Enter IP: ");
         std::memset(inputBuffer, 0, sizeof(inputBuffer));
@@ -68,21 +70,23 @@ namespace SCP::ClientCLI
 
         while (!m_FinishedConnect.load())
         {
-            printw("test");
-            refresh();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
-        if (m_ConnectErr.has_value())
+        if (m_ErrMsg.has_value())
         {
             clear();
-            printw("Error when connecting: %s\n", m_ConnectErr.value().c_str());
+            printw("Error when connecting: %s\n", m_ErrMsg.value().c_str());
             printw("Press any key to continue...");
             getch();
             return;
         }
 
-        while (1)
+        m_Connected = true;
+        std::string currentMessage;
+        halfdelay(2);
+
+        while (m_Connected)
         {
             std::string msg;
             
@@ -98,41 +102,100 @@ namespace SCP::ClientCLI
 
             erase();
             move(0, 0);
-            printw("Connected to %s:%hu as %s", ip.c_str(), port, username.c_str());
+            printw("Connected to %s:%hu as %s\n\n", ip.c_str(), port, username.c_str());
+            int maxY = getmaxy(stdscr);
+            int maxX = getmaxx(stdscr);
+            int maxMessages = maxY - 10;
 
             for (auto& message : m_Messages)
             {
                 printw("%s\n", message.c_str());
             }
 
-            int y = getmaxy(stdscr);
-            mvprintw(y - 1, 0, "Press q to quit");
-            refresh();
 
+            mvprintw(maxY - 1, 0, "Enter message: %s", currentMessage.c_str());
             int c = getch();
 
-            if (c == ERR)
+            if (c != ERR)
             {
-                continue;
+                switch (c)
+                {
+                case '\b':
+                case 127:
+                    currentMessage.pop_back();
+                    break;
+                case '\r':
+                case '\n':
+                case '\f':
+                    m_Client.SendMessage(currentMessage);
+                    currentMessage.clear();
+                    break;
+                default:
+                    currentMessage += static_cast<char>(c);
+                    break;
+                }
             }
 
-            if (c == 'q' || c == 'Q')
+            try
             {
-                break;
+                std::this_thread::yield();
             }
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            catch (...) { }
         }
+    }
+
+    void CLI::Run()
+    {
+        bool exit = false;
+
+        do
+        {
+            DoStuff();
+
+            nodelay(stdscr, false);
+            nocbreak();
+            clear();
+            move(0, 0);
+    
+            if (m_ErrMsg.has_value())
+            {
+                printw("Abnormal disconnect from server: %s\n", m_ErrMsg.value().c_str());
+            }
+            else
+            {
+                printw("Disconnected from server.\n");
+            }
+    
+            int response;
+    
+            do
+            {
+                printw("Connect to another server (Y or N)? ");
+                response = getch();
+            }
+            while (response != 'Y' && response != 'y' && response != 'N' && response != 'n');
+
+            if (response == 'n' || response == 'N')
+            {
+                exit = true;
+            }
+        } while (!exit);
     }
 
     void CLI::OnConnect(std::optional<std::string> str)
     {
-        m_ConnectErr = str;
+        m_ErrMsg = str;
         m_FinishedConnect.store(true);
     }
 
     void CLI::OnChatMessage(std::string msg)
     {
         m_MsgQueue.enqueue(std::move(msg));
+    }
+
+    void CLI::OnDisconnect(std::optional<std::string> str)
+    {
+        m_ErrMsg = str;
+        m_Connected = false;
     }
 }

@@ -29,7 +29,7 @@ namespace SCP::Server
         {
             auto [lenError, lenRead] = co_await m_Socket.async_read_some(boost::asio::buffer(m_Buffer, 2), boost::asio::as_tuple(boost::asio::use_awaitable));
 
-            if (lenError != boost::system::errc::success || lenRead != 1)
+            if (lenError != boost::system::errc::success || lenRead != 2)
             {
                 break;
             }
@@ -48,13 +48,15 @@ namespace SCP::Server
                 break;
             }
 
-            m_ChatRoom->GetEventHandler().OnChatMessage(std::string(reinterpret_cast<char*>(m_Buffer), msgLen));
+            std::string message = m_Username + ": " + std::string(reinterpret_cast<char*>(m_Buffer), msgLen);
+            m_ChatRoom->GetEventHandler().OnChatMessage(message);
+            co_await m_ChatRoom->BroadcastMessage(message);
         }
 
         co_await m_ChatRoom->RemoveClient(m_UUID);
     }
 
-    boost::asio::awaitable<void> Client::SendMessage(const std::string& msg)
+    boost::asio::awaitable<void> Client::SendMessage(std::string msg)
     {
         unsigned char buffer[65535+2];
         boost::endian::store_big_u16(buffer, msg.size());
@@ -103,7 +105,7 @@ namespace SCP::Server
         boost::asio::co_spawn(executor, BroadcastMessage(client->GetUsername() + " disconnected"), boost::asio::detached);
     }
 
-    boost::asio::awaitable<void> ChatRoom::BroadcastMessage(const std::string& msg)
+    boost::asio::awaitable<void> ChatRoom::BroadcastMessage(std::string msg)
     {
         m_EventHandler.OnChatMessage(msg);
         
@@ -132,8 +134,12 @@ namespace SCP::Server
 
         m_Running = true;
         m_Port = port;
-        boost::asio::co_spawn(m_IOCtx, ServerLoop(), boost::asio::detached);
-        m_ServerThread = std::thread([&](){ m_IOCtx.restart(); m_IOCtx.run(); });
+        boost::asio::ip::tcp::endpoint endpoint = {boost::asio::ip::tcp::v4(), m_Port};
+        m_Acceptor.open(endpoint.protocol());
+        m_Acceptor.bind(endpoint);
+        m_Acceptor.listen();
+        DoAccept();
+        m_ServerThread = std::jthread([&](){ m_IOCtx.restart(); m_IOCtx.run(); });
         return true;
     }
 
@@ -143,11 +149,8 @@ namespace SCP::Server
 
         if (m_Running.compare_exchange_strong(expected, false))
         {
-            //std::cout << "stopping\n";
             m_Acceptor.close();
             m_IOCtx.stop();
-            m_ServerThread.join();
-            //std::cout << "stopped\n";
             return true;
         }
         else
@@ -156,76 +159,42 @@ namespace SCP::Server
         }
     }
 
-    boost::asio::awaitable<void> ChatServer::ServerLoop()
+    void ChatServer::DoAccept()
     {
-        try
+        m_Acceptor.async_accept([this](const boost::system::error_code& error, boost::asio::ip::tcp::socket sock)
         {
-            //m_Acceptor = boost::asio::ip::tcp::acceptor(m_IOCtx, {boost::asio::ip::tcp::v4(), m_Port});
-            //m_Acceptor.open({boost::asio::ip::tcp::v4(), m_Port});
-            //m_Acceptor.bind({boost::asio::ip::tcp::v4(), m_Port});
-            //m_Acceptor.open(boost::asio::ip::tcp::v4());
-            //auto acceptor = boost::asio::ip::tcp::acceptor(m_IOCtx, {boost::asio::ip::tcp::v4(), m_Port});
-            boost::asio::ip::tcp::endpoint endpoint = {boost::asio::ip::tcp::v4(), m_Port};
-            
-            m_Acceptor.open(endpoint.protocol());
-            m_Acceptor.bind(endpoint);
-            m_Acceptor.listen();
-            
-            while (m_Running)
+            if (!error)
             {
-                //std::cout << "waiting for connection\n";
-                auto [error, sock] = co_await m_Acceptor.async_accept(boost::asio::as_tuple(boost::asio::use_awaitable));
-
-                if (error == boost::asio::error::shut_down)
-                {
-                    //std::cout << "here\n";
-                    break;
-                }
-                else if (error != boost::system::errc::success)
-                {
-                    //std::cout << "here2\n";
-                    continue;
-                }
-
                 boost::asio::co_spawn(m_IOCtx, HandleConn(std::move(sock)), boost::asio::detached);
             }
 
-            //std::cout << "end of loop\n";
-        }
-        catch (const boost::system::system_error& e)
-        {
-            std::cerr << "Listening error: " << e.what() << '\n';
-        }
-
-        co_return;
+            if (m_Running)
+            {
+                DoAccept();
+            }
+        });
     }
 
     boost::asio::awaitable<void> ChatServer::HandleConn(boost::asio::ip::tcp::socket sock)
     {
-        m_EventHandler.OnChatMessage("here 0");
         char buffer[28];
         auto [error, read] = co_await sock.async_read_some(boost::asio::buffer(buffer), boost::asio::as_tuple(boost::asio::use_awaitable));
-        m_EventHandler.OnChatMessage("here 0.5");
 
         if (error != boost::system::errc::success || read != 28 || std::memcmp(m_Header, buffer, 8) != 0)
         {
-            m_EventHandler.OnChatMessage("here 1");
             try
             {
                 sock.shutdown(boost::asio::socket_base::shutdown_both);
             }
             catch(...){ }
-            m_EventHandler.OnChatMessage("here 2");
             try
             {
                 sock.close();
             }
             catch(...){ }
-            m_EventHandler.OnChatMessage("here 3");
             co_return;
         }
 
-        m_EventHandler.OnChatMessage("here 4");
         std::string name(buffer + sizeof(m_Header));
         co_await m_ChatRoom->CreateClient(std::move(sock), name);
     }
