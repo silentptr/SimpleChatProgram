@@ -102,6 +102,11 @@ namespace SCP::Client
 
     void ChatClient::SendMessage(const std::string& msg)
     {
+        if (msg.empty())
+        {
+            return;
+        }
+        
         boost::asio::co_spawn(m_IOCtx, DoWrite(msg), boost::asio::detached);
     }
 
@@ -157,11 +162,6 @@ namespace SCP::Client
     }
 
     ChatClient::ChatClient(ChatClientEventHandler& handler) : m_IOCtx(1), m_Resolver(m_IOCtx), m_Socket(m_IOCtx), m_EventHandler(handler), m_State(ChatClientState::Inactive)
-    {
-        
-    }
-
-    ChatClient::~ChatClient()
     {
         
     }

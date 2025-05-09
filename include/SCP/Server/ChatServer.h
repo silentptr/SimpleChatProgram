@@ -7,6 +7,8 @@
 #include <thread>
 #include <atomic>
 #include <iostream>
+#include <optional>
+#include <string>
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -28,6 +30,8 @@ namespace SCP::Server
         ChatServerEventHandler() noexcept;
         virtual ~ChatServerEventHandler() noexcept;
         
+        virtual void OnServerStart(std::optional<std::string>);
+        virtual void OnServerStop(std::optional<std::string>);
         virtual void OnChatMessage(std::string);
     };
 

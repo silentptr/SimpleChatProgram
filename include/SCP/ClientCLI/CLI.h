@@ -17,13 +17,13 @@ namespace SCP::ClientCLI
     class CLI : public SCP::Client::ChatClientEventHandler
     {
     private:
+        std::atomic_bool m_EventFinished;
+        std::optional<std::string> m_ErrMsg;
+
         SCP::Client::ChatClient m_Client;
         std::vector<std::string> m_Messages;
         moodycamel::ConcurrentQueue<std::string> m_MsgQueue;
-        std::atomic_bool m_FinishedConnect;
-        std::optional<std::string> m_ErrMsg;
-        bool m_Connected;
-
+        
         void DoStuff();
     public:
         CLI();

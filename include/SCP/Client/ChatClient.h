@@ -61,7 +61,6 @@ namespace SCP::Client
         bool StopWithError(std::string);
     public:
         ChatClient(ChatClientEventHandler&);
-        ~ChatClient();
 
         inline ChatClientState GetState() const noexcept { return m_State.load(); }
 

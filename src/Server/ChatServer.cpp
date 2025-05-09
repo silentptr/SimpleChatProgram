@@ -7,6 +7,8 @@ namespace SCP::Server
 {
     ChatServerEventHandler::ChatServerEventHandler() noexcept { }
     ChatServerEventHandler::~ChatServerEventHandler() noexcept { }
+    void ChatServerEventHandler::OnServerStart(std::optional<std::string>) { }
+    void ChatServerEventHandler::OnServerStop(std::optional<std::string>) { }
     void ChatServerEventHandler::OnChatMessage(std::string) { }
 
     Client::~Client()
@@ -49,7 +51,6 @@ namespace SCP::Server
             }
 
             std::string message = m_Username + ": " + std::string(reinterpret_cast<char*>(m_Buffer), msgLen);
-            m_ChatRoom->GetEventHandler().OnChatMessage(message);
             co_await m_ChatRoom->BroadcastMessage(message);
         }
 
@@ -132,14 +133,30 @@ namespace SCP::Server
             return false;
         }
 
-        m_Running = true;
         m_Port = port;
         boost::asio::ip::tcp::endpoint endpoint = {boost::asio::ip::tcp::v4(), m_Port};
-        m_Acceptor.open(endpoint.protocol());
-        m_Acceptor.bind(endpoint);
+        boost::system::error_code ec;
+        m_Acceptor.open(endpoint.protocol(), ec);
+
+        if (ec != boost::system::errc::success)
+        {
+            m_EventHandler.OnServerStart(ec.message());
+            return true;
+        }
+
+        m_Acceptor.bind(endpoint, ec);
+
+        if (ec != boost::system::errc::success)
+        {
+            m_EventHandler.OnServerStart(ec.message());
+            return true;
+        }
+
         m_Acceptor.listen();
+        m_Running.store(true);
         DoAccept();
         m_ServerThread = std::jthread([&](){ m_IOCtx.restart(); m_IOCtx.run(); });
+        m_EventHandler.OnServerStart(std::nullopt);
         return true;
     }
 

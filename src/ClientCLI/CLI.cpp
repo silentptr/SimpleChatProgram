@@ -4,7 +4,7 @@
 
 namespace SCP::ClientCLI
 {
-    CLI::CLI() : m_Client(*this), m_FinishedConnect(false)
+    CLI::CLI() : m_Client(*this)
     {
         initscr();
         m_Messages.reserve(255);
@@ -17,7 +17,7 @@ namespace SCP::ClientCLI
 
     void CLI::DoStuff()
     {
-        nodelay(stdscr, false);
+        nodelay(stdscr, FALSE);
         nocbreak();
         std::uint16_t port = 0;
         std::string ip, username;
@@ -62,37 +62,49 @@ namespace SCP::ClientCLI
         getnstr(inputBuffer, 19);
         username = inputBuffer;
 
+        m_EventFinished = false;
         m_Client.Start(ip, port, username);
 
         clear();
         printw("Connecting to %s:%hu...\n", ip.c_str(), port);
+        printw("Press C to cancel");
         refresh();
+        nodelay(stdscr, TRUE);
 
-        while (!m_FinishedConnect.load())
+        while (!m_EventFinished.load())
         {
+            int thing = getch();
+
+            if (thing == 'C' || thing == 'c')
+            {
+                return;
+            }
+
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
+        nodelay(stdscr, FALSE);
+        nocbreak();
+        clear();
+
         if (m_ErrMsg.has_value())
         {
-            clear();
-            printw("Error when connecting: %s\n", m_ErrMsg.value().c_str());
-            printw("Press any key to continue...");
+            printw("Error when connecting: %s\nPress any key to continue...", m_ErrMsg.value().c_str());
             getch();
             return;
         }
 
-        m_Connected = true;
         std::string currentMessage;
         halfdelay(2);
+        clear();
 
-        while (m_Connected)
+        while (m_Client.GetState() == SCP::Client::ChatClientState::Connected)
         {
             std::string msg;
             
             if (m_MsgQueue.try_dequeue(msg))
             {
-                if (m_Messages.size() == 100)
+                if (m_Messages.size() == 255)
                 {
                     m_Messages.pop_back();
                 }
@@ -102,16 +114,20 @@ namespace SCP::ClientCLI
 
             erase();
             move(0, 0);
-            printw("Connected to %s:%hu as %s\n\n", ip.c_str(), port, username.c_str());
+            printw("Connected to %s:%hu as %s", ip.c_str(), port, username.c_str());
             int maxY = getmaxy(stdscr);
-            int maxX = getmaxx(stdscr);
-            int maxMessages = maxY - 10;
+            int messageIndex = m_Messages.size() - 1;
+            int chatRows = maxY - 4;
 
-            for (auto& message : m_Messages)
+            for (int rowIndex = maxY - 3 - (m_Messages.size() >= chatRows ? 0 : chatRows - m_Messages.size()); rowIndex > 1; --rowIndex)
             {
-                printw("%s\n", message.c_str());
-            }
+                if (messageIndex > -1)
+                {
+                    mvprintw(rowIndex, 0, m_Messages[messageIndex].c_str());
+                }
 
+                --messageIndex;
+            }
 
             mvprintw(maxY - 1, 0, "Enter message: %s", currentMessage.c_str());
             int c = getch();
@@ -122,13 +138,21 @@ namespace SCP::ClientCLI
                 {
                 case '\b':
                 case 127:
-                    currentMessage.pop_back();
+                    if (!currentMessage.empty())
+                    {
+                        currentMessage.pop_back();
+                    }
+                    
                     break;
                 case '\r':
                 case '\n':
                 case '\f':
-                    m_Client.SendMessage(currentMessage);
-                    currentMessage.clear();
+                    if (!currentMessage.empty())
+                    {
+                        m_Client.SendMessage(currentMessage);
+                        currentMessage.clear();
+                    }
+                    
                     break;
                 default:
                     currentMessage += static_cast<char>(c);
@@ -152,7 +176,7 @@ namespace SCP::ClientCLI
         {
             DoStuff();
 
-            nodelay(stdscr, false);
+            nodelay(stdscr, FALSE);
             nocbreak();
             clear();
             move(0, 0);
@@ -185,7 +209,7 @@ namespace SCP::ClientCLI
     void CLI::OnConnect(std::optional<std::string> str)
     {
         m_ErrMsg = str;
-        m_FinishedConnect.store(true);
+        m_EventFinished = true;
     }
 
     void CLI::OnChatMessage(std::string msg)
@@ -196,6 +220,5 @@ namespace SCP::ClientCLI
     void CLI::OnDisconnect(std::optional<std::string> str)
     {
         m_ErrMsg = str;
-        m_Connected = false;
     }
 }

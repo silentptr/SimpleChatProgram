@@ -4,30 +4,26 @@
 
 namespace SCP::ServerCLI
 {
-    CLI::CLI() : m_Running(false), m_Server(*this)
+    CLI::CLI() : m_Server(*this)
     {
+        initscr();
         m_Messages.reserve(255);
     }
 
     CLI::~CLI()
     {
-        if (m_Running)
-        {
-            endwin();
-        }
+        endwin();
     }
 
     void CLI::Run()
     {
-        m_Running = true;
-        initscr();
         std::uint16_t port = 0;
         char inputBuffer[32];
 
         while (port == 0)
         {
             clear();
-            printw("Enter port: ");
+            printw("Enter port (q to quit): ");
             std::memset(inputBuffer, 0, sizeof(inputBuffer));
             getnstr(inputBuffer, 5);
 
@@ -50,10 +46,25 @@ namespace SCP::ServerCLI
         clear();
         printw("Starting server on port %hu...\n", port);
         refresh();
+        m_EventFinished = false;
         m_Server.Start(port);
-        nodelay(stdscr, TRUE);
 
-        while (1)
+        while (!m_EventFinished.load())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        if (m_ErrMsg.has_value())
+        {
+            clear();
+            printw("An error occured while starting server: %s\nPress any key to continue...", m_ErrMsg.value().c_str());
+            getch();
+            return;
+        }
+
+        halfdelay(2);
+
+        while (m_Server.IsRunning())
         {
             std::string msg;
             
@@ -71,31 +82,55 @@ namespace SCP::ServerCLI
             move(0, 0);
             printw("Server listening on port %hu.\n\n", port);
 
-            for (auto& message : m_Messages)
+            int maxY = getmaxy(stdscr);
+            int messageIndex = m_Messages.size() - 1;
+            int chatRows = maxY - 4;
+
+            for (int rowIndex = maxY - 3 - (m_Messages.size() >= chatRows ? 0 : chatRows - m_Messages.size()); rowIndex > 1; --rowIndex)
             {
-                printw("%s\n", message.c_str());
+                if (messageIndex > -1)
+                {
+                    mvprintw(rowIndex, 0, m_Messages[messageIndex].c_str());
+                }
+
+                --messageIndex;
             }
 
-            int y = getmaxy(stdscr);
-            mvprintw(y - 1, 0, "Press q to quit");
-            refresh();
+            mvprintw(maxY - 1, 0, "Press q to quit");
 
             int c = getch();
-
-            if (c == ERR)
-            {
-                continue;
-            }
 
             if (c == 'q' || c == 'Q')
             {
                 break;
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            try
+            {
+                std::this_thread::yield();
+            }
+            catch (...) { }
         }
 
-        nodelay(stdscr, FALSE);
+        if (m_ErrMsg.has_value())
+        {
+            nodelay(stdscr, FALSE);
+            nocbreak();
+            clear();
+            printw("Server stopped abnormally: %s\nPress any key to continue...", m_ErrMsg.value().c_str());
+            getch();
+        }
+    }
+
+    void CLI::OnServerStart(std::optional<std::string> err)
+    {
+        m_ErrMsg = err;
+        m_EventFinished = true;
+    }
+
+    void CLI::OnServerStop(std::optional<std::string> err)
+    {
+        m_ErrMsg = err;
     }
 
     void CLI::OnChatMessage(std::string msg)
