@@ -1,31 +1,31 @@
 #include "SCP/ServerCLI/CLI.h"
 
-#ifdef _WIN32
-#include <curses.h> // PDCurses
-#else
-#include <ncurses.h>
-#endif
-
 namespace SCP::ServerCLI
 {
     CLI::CLI() : m_Server(*this)
     {
-        initscr();
+        notcurses_options ncopt;
+        std::memset(&ncopt, 0, sizeof(ncopt));
+        m_NC = notcurses_init(&ncopt, stdout);
+
         m_Messages.reserve(255);
     }
 
-    CLI::~CLI()
+    CLI::~CLI() noexcept
     {
-        endwin();
+        notcurses_stop(m_NC);
     }
 
     void CLI::Run()
     {
+        struct ncplane* plane = notcurses_stdplane(m_NC);
         std::uint16_t port = 0;
         char inputBuffer[32];
 
         while (port == 0)
         {
+            ncplane_putstr(plane, "Enter port (q to quit): ");
+            
             clear();
             printw("Enter port (q to quit): ");
             std::memset(inputBuffer, 0, sizeof(inputBuffer));

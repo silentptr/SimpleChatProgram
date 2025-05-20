@@ -6,8 +6,11 @@
 #include <cstring>
 #include <vector>
 #include <atomic>
+#include <cstdio>
 
 #include <boost/lexical_cast.hpp>
+
+#include <notcurses/notcurses.h>
 
 #include "moodycamel/concurrentqueue.h"
 
@@ -18,6 +21,8 @@ namespace SCP::ServerCLI
     class CLI : public SCP::Server::ChatServerEventHandler
     {
     private:
+        struct notcurses* m_NC;
+
         std::atomic_bool m_EventFinished;
         std::optional<std::string> m_ErrMsg;
         
@@ -26,7 +31,7 @@ namespace SCP::ServerCLI
         moodycamel::ConcurrentQueue<std::string> m_MsgQueue;
     public:
         CLI();
-        ~CLI();
+        ~CLI() noexcept;
 
         void Run();
 
