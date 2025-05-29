@@ -8,6 +8,7 @@ message(STATUS "Build client CLI: ${BUILD_CLIENT_CLI}")
 message(STATUS "Build server CLI: ${BUILD_SERVER_CLI}")
 
 find_package(Boost 1.87 REQUIRED)
+message(STATUS "Boost version: ${Boost_VERSION}")
 
 if(BUILD_CLIENT_CLI OR BUILD_SERVER_CLI)
     if(NOT DEFINED NOTCURSES_INCLUDE_DIRS OR NOT DEFINED NOTCURSES_LIBRARIES)
