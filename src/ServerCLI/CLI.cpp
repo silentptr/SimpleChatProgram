@@ -1,10 +1,6 @@
 #include "SCP/ServerCLI/CLI.h"
 
-#ifdef _WIN32
-#include <curses.h> // PDCurses
-#else
-#include <ncurses.h>
-#endif
+#include <notcurses/notcurses.h>
 
 namespace SCP::ServerCLI
 {

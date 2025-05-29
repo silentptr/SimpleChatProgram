@@ -1,16 +1,12 @@
 #include "SCP/ClientCLI/CLI.h"
 
-#ifdef _WIN32
-#include <curses.h> // PDCurses
-#else
-#include <ncurses.h>
-#endif
+#include <notcurses/notcurses.h>
 
 namespace SCP::ClientCLI
 {
     CLI::CLI() : m_Client(*this)
     {
-        initscr();
+        
         m_Messages.reserve(255);
     }
 
