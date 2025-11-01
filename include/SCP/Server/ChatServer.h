@@ -9,6 +9,9 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <expected>
+#include <algorithm>
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -24,17 +27,18 @@
 
 namespace SCP::Server
 {
-    class ChatServerEventHandler
-    {
-    public:
-        ChatServerEventHandler() noexcept;
-        virtual ~ChatServerEventHandler() noexcept;
+    // class ChatServerEventHandler
+    // {
+    // public:
+    //     ChatServerEventHandler() noexcept;
+    //     virtual ~ChatServerEventHandler() noexcept;
         
-        virtual void OnServerStart(std::optional<std::string>);
-        virtual void OnServerStop(std::optional<std::string>);
-        virtual void OnChatMessage(std::string);
-    };
+    //     virtual void OnServerStart(std::optional<std::string>);
+    //     virtual void OnServerStop(std::optional<std::string>);
+    //     virtual void OnChatMessage(std::string);
+    // };
 
+    class ChatServer;
     class ChatRoom;
     
     class Client : public std::enable_shared_from_this<Client>
@@ -63,17 +67,18 @@ namespace SCP::Server
         struct Private{ explicit Private() = default; };
     private:
         boost::unordered_map<boost::uuids::uuid, std::shared_ptr<Client>> m_Clients;
-        ChatServerEventHandler& m_EventHandler;
+        ChatServer* m_ChatServer;
+        //ChatServerEventHandler& m_EventHandler;
     public:
-        inline ChatRoom(Private, ChatServerEventHandler& h) : m_EventHandler(h) { }
+        inline ChatRoom(Private, ChatServer* server) : m_ChatServer(server) { }
 
-        inline static std::shared_ptr<ChatRoom> Create(ChatServerEventHandler& h) { return std::make_shared<ChatRoom>(Private(), h); }
+        inline static std::shared_ptr<ChatRoom> Create(ChatServer* server) { return std::make_shared<ChatRoom>(Private(), server); }
 
         boost::asio::awaitable<void> CreateClient(boost::asio::ip::tcp::socket, std::string);
         boost::asio::awaitable<void> RemoveClient(const boost::uuids::uuid&);
         boost::asio::awaitable<void> BroadcastMessage(std::string);
 
-        inline ChatServerEventHandler& GetEventHandler() noexcept { return m_EventHandler; }
+        inline ChatServer* GetChatServer() const noexcept { return m_ChatServer; }
     };
 
     class ChatServer
@@ -87,7 +92,7 @@ namespace SCP::Server
         std::atomic_bool m_Running;
         std::uint16_t m_Port;
 
-        ChatServerEventHandler& m_EventHandler;
+        //ChatServerEventHandler& m_EventHandler;
 
         std::shared_ptr<ChatRoom> m_ChatRoom;
 
@@ -96,14 +101,18 @@ namespace SCP::Server
         
         void StopWithError(std::string);
     public:
-        ChatServer(ChatServerEventHandler&);
-        ~ChatServer();
+        ChatServer();
+        virtual ~ChatServer();
 
         inline bool IsRunning() const noexcept { return m_Running; }
         inline std::uint16_t Port() const noexcept { return m_Port; }
 
         bool Start(std::uint16_t);
         bool Stop();
+
+        virtual void OnServerStart(std::optional<std::string>){}
+        virtual void OnServerStop(std::optional<std::string>){}
+        virtual void OnChatMessage(std::string){}
     };
 }
 

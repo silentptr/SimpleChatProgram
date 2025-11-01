@@ -1,10 +1,10 @@
 #include "SCP/ServerCLI/CLI.h"
 
-#include <notcurses/notcurses.h>
+#include <ncurses.h>
 
 namespace SCP::ServerCLI
 {
-    CLI::CLI() : m_Server(*this)
+    CLI::CLI()
     {
         initscr();
         m_Messages.reserve(255);

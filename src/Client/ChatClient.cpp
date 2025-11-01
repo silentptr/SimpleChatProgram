@@ -2,11 +2,11 @@
 
 namespace SCP::Client
 {
-    ChatClientEventHandler::ChatClientEventHandler() noexcept { }
-    ChatClientEventHandler::~ChatClientEventHandler() noexcept { }
-    void ChatClientEventHandler::OnConnect(std::optional<std::string>) { }
-    void ChatClientEventHandler::OnChatMessage(std::string) { }
-    void ChatClientEventHandler::OnDisconnect(std::optional<std::string>) { }
+    // ChatClientEventHandler::ChatClientEventHandler() noexcept { }
+    // ChatClientEventHandler::~ChatClientEventHandler() noexcept { }
+    // void ChatClientEventHandler::OnConnect(std::optional<std::string>) { }
+    // void ChatClientEventHandler::OnChatMessage(std::string) { }
+    // void ChatClientEventHandler::OnDisconnect(std::optional<std::string>) { }
 
     void ChatClient::SilentSockClose()
     {
@@ -30,6 +30,7 @@ namespace SCP::Client
 
             if (connectError != boost::system::errc::success)
             {
+                OnConnect(std::unexpected(connectError.message()));
                 co_return;
             }
 
@@ -42,6 +43,7 @@ namespace SCP::Client
             if (handshakeError != boost::system::errc::success || written != sizeof(buffer))
             {
                 SilentSockClose();
+                OnConnect(std::unexpected(handshakeError.message()));
                 co_return;
             }
 
@@ -51,12 +53,13 @@ namespace SCP::Client
             if (readError != boost::system::errc::success || readLen != 16)
             {
                 SilentSockClose();
+                OnConnect(std::unexpected(readError.message()));
                 co_return;
             }
 
             m_UUID = boost::uuids::uuid(uuidBuffer);
             m_State.store(ChatClientState::Connected);
-            m_EventHandler.OnConnect(std::nullopt);
+            OnConnect({});
             co_await DoRead();
         }
         catch (const boost::system::system_error& e)
@@ -86,7 +89,7 @@ namespace SCP::Client
                 co_return;
             }
 
-            m_EventHandler.OnChatMessage(std::string(reinterpret_cast<char*>(m_Buffer), msgLen));
+            OnChatMessage(std::string(reinterpret_cast<char*>(m_Buffer), msgLen));
         }
 
         Stop();
@@ -94,23 +97,23 @@ namespace SCP::Client
 
     boost::asio::awaitable<void> ChatClient::DoWrite(std::string msg)
     {
-        unsigned char writeBuffer[65535+2];
-        boost::endian::store_big_u16(writeBuffer, msg.size());
-        std::memcpy(writeBuffer+2, msg.c_str(), msg.size());
-        co_await boost::asio::async_write(m_Socket, boost::asio::buffer(writeBuffer, msg.size() + 2), boost::asio::use_awaitable);
+        std::unique_ptr<unsigned char[]> writeBuffer = std::make_unique<unsigned char[]>(65535+2);
+        boost::endian::store_big_u16(writeBuffer.get(), msg.size());
+        std::memcpy(writeBuffer.get()+2, msg.c_str(), std::clamp(msg.size(), static_cast<std::size_t>(1), static_cast<std::size_t>(65535)));
+        co_await boost::asio::async_write(m_Socket, boost::asio::buffer(writeBuffer.get(), msg.size() + 2), boost::asio::use_awaitable);
     }
 
-    void ChatClient::SendMessage(const std::string& msg)
+    void ChatClient::SendMessage(const std::string_view& msg)
     {
         if (msg.empty())
         {
             return;
         }
         
-        boost::asio::co_spawn(m_IOCtx, DoWrite(msg), boost::asio::detached);
+        boost::asio::co_spawn(m_IOCtx, DoWrite(std::string(msg)), boost::asio::detached);
     }
 
-    bool ChatClient::Start(const std::string& ip, std::uint16_t port, const std::string& username)
+    bool ChatClient::Start(const std::string_view& ip, std::uint16_t port, const std::string_view& username)
     {
         ChatClientState expected = ChatClientState::Inactive;
 
@@ -127,14 +130,14 @@ namespace SCP::Client
         return true;
     }
 
-    bool ChatClient::StopWithError(std::string err)
+    bool ChatClient::StopWithError(const std::string_view& err)
     {
         ChatClientState expected = ChatClientState::Connected;
 
         if (m_State.compare_exchange_strong(expected, ChatClientState::Inactive))
         {
             SilentSockClose();
-            m_EventHandler.OnDisconnect(err);
+            OnDisconnect(std::unexpected(std::string(err)));
             try { m_IOCtx.stop(); } catch (...) { }
             return true;
         }
@@ -151,7 +154,7 @@ namespace SCP::Client
         if (m_State.compare_exchange_strong(expected, ChatClientState::Inactive))
         {
             SilentSockClose();
-            m_EventHandler.OnDisconnect(std::nullopt);
+            OnDisconnect({});
             try { m_IOCtx.stop(); } catch (...) { }
             return true;
         }
@@ -161,7 +164,8 @@ namespace SCP::Client
         }
     }
 
-    ChatClient::ChatClient(ChatClientEventHandler& handler) : m_IOCtx(1), m_Resolver(m_IOCtx), m_Socket(m_IOCtx), m_EventHandler(handler), m_State(ChatClientState::Inactive)
+    ChatClient::ChatClient() :
+    m_IOCtx(1), m_Resolver(m_IOCtx), m_Socket(m_IOCtx), m_State(ChatClientState::Inactive)
     {
         
     }

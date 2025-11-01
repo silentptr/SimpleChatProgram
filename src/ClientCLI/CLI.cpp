@@ -1,13 +1,13 @@
 #include "SCP/ClientCLI/CLI.h"
 
-#include <notcurses/notcurses.h>
+#include <ncurses.h>
 
 namespace SCP::ClientCLI
 {
-    CLI::CLI() : m_Client(*this)
+    CLI::CLI()
     {
-        
         m_Messages.reserve(255);
+        initscr();
     }
 
     CLI::~CLI()
@@ -23,6 +23,8 @@ namespace SCP::ClientCLI
         std::string ip, username;
         char inputBuffer[255];
 
+        addstr("test");
+        move(0, 0);
         printw("Enter IP: ");
         std::memset(inputBuffer, 0, sizeof(inputBuffer));
         getnstr(inputBuffer, 31);
@@ -63,7 +65,7 @@ namespace SCP::ClientCLI
         username = inputBuffer;
 
         m_EventFinished = false;
-        m_Client.Start(ip, port, username);
+        Start(ip, port, username);
 
         clear();
         printw("Connecting to %s:%hu...\n", ip.c_str(), port);
@@ -98,7 +100,7 @@ namespace SCP::ClientCLI
         halfdelay(2);
         clear();
 
-        while (m_Client.GetState() == SCP::Client::ChatClientState::Connected)
+        while (GetState() == SCP::Client::ChatClientState::Connected)
         {
             std::string msg;
             
@@ -149,7 +151,7 @@ namespace SCP::ClientCLI
                 case '\f':
                     if (!currentMessage.empty())
                     {
-                        m_Client.SendMessage(currentMessage);
+                        SendMessage(currentMessage);
                         currentMessage.clear();
                     }
                     
@@ -206,9 +208,13 @@ namespace SCP::ClientCLI
         } while (!exit);
     }
 
-    void CLI::OnConnect(std::optional<std::string> str)
+    void CLI::OnConnect(std::expected<void, std::string> str)
     {
-        m_ErrMsg = str;
+        if (!str.has_value())
+        {
+            m_ErrMsg = str.error();
+        }
+        
         m_EventFinished = true;
     }
 
@@ -217,8 +223,11 @@ namespace SCP::ClientCLI
         m_MsgQueue.enqueue(std::move(msg));
     }
 
-    void CLI::OnDisconnect(std::optional<std::string> str)
+    void CLI::OnDisconnect(std::expected<void, std::string> str)
     {
-        m_ErrMsg = str;
+        if (!str.has_value())
+        {
+            m_ErrMsg = str.error();
+        }
     }
 }

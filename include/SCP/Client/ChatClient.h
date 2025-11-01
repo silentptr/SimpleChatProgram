@@ -3,10 +3,13 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <atomic>
 #include <optional>
 #include <thread>
 #include <iostream>
+#include <expected>
+#include <algorithm>
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -18,17 +21,6 @@
 
 namespace SCP::Client
 {
-    class ChatClientEventHandler
-    {
-    public:
-        ChatClientEventHandler() noexcept;
-        virtual ~ChatClientEventHandler() noexcept;
-        // empty if success, otherwise contains an error message
-        virtual void OnConnect(std::optional<std::string>);
-        virtual void OnChatMessage(std::string);
-        virtual void OnDisconnect(std::optional<std::string>);
-    };
-
     enum class ChatClientState : std::uint8_t
     {
         Inactive = 0, Connecting = 1, Connected = 2
@@ -39,7 +31,7 @@ namespace SCP::Client
     private:
         static constexpr char m_Header[8] = {2, 3, 1, 77, 30, 115, 33, 49};
 
-        ChatClientEventHandler& m_EventHandler;
+        //ChatClientEventHandler& m_EventHandler;
     
         boost::asio::io_context m_IOCtx;
         std::jthread m_Thread;
@@ -58,16 +50,21 @@ namespace SCP::Client
 
         unsigned char m_Buffer[65535];
 
-        bool StopWithError(std::string);
+        bool StopWithError(const std::string_view&);
     public:
-        ChatClient(ChatClientEventHandler&);
+        ChatClient();
+        virtual ~ChatClient(){}
 
         inline ChatClientState GetState() const noexcept { return m_State.load(); }
 
-        bool Start(const std::string&, std::uint16_t, const std::string&);
+        bool Start(const std::string_view&, std::uint16_t, const std::string_view&);
         bool Stop();
 
-        void SendMessage(const std::string&);
+        void SendMessage(const std::string_view&);
+
+        virtual void OnConnect(std::expected<void, std::string>){}
+        virtual void OnChatMessage(std::string){}
+        virtual void OnDisconnect(std::expected<void, std::string>){}
     };
 }
 

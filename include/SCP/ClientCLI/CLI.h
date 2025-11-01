@@ -14,13 +14,12 @@
 
 namespace SCP::ClientCLI
 {
-    class CLI : public SCP::Client::ChatClientEventHandler
+    class CLI : public SCP::Client::ChatClient
     {
     private:
         std::atomic_bool m_EventFinished;
         std::optional<std::string> m_ErrMsg;
 
-        SCP::Client::ChatClient m_Client;
         std::vector<std::string> m_Messages;
         moodycamel::ConcurrentQueue<std::string> m_MsgQueue;
         
@@ -31,9 +30,9 @@ namespace SCP::ClientCLI
 
         void Run();
 
-        void OnConnect(std::optional<std::string>) override;
+        void OnConnect(std::expected<void, std::string>) override;
         void OnChatMessage(std::string) override;
-        void OnDisconnect(std::optional<std::string>) override;
+        void OnDisconnect(std::expected<void, std::string>) override;
     };
 }
 

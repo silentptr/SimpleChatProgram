@@ -15,7 +15,7 @@
 
 namespace SCP::ServerCLI
 {
-    class CLI : public SCP::Server::ChatServerEventHandler
+    class CLI : public SCP::Server::ChatServer
     {
     private:
         std::atomic_bool m_EventFinished;
