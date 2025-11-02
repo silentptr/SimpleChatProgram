@@ -5,7 +5,8 @@
 #include <string>
 #include <cstring>
 #include <vector>
-#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 #include <boost/lexical_cast.hpp>
 
@@ -15,13 +16,16 @@
 
 namespace SCP::ServerCLI
 {
-    class CLI : public SCP::Server::ChatServerEventHandler
+    class CLI : public SCP::Server::ChatServer
     {
     private:
-        std::atomic_bool m_EventFinished;
+        std::condition_variable m_CondVar;
+        std::mutex m_Mutex;
+        bool m_Waiting;
         std::optional<std::string> m_ErrMsg;
+
+        void WaitForCallback();
         
-        SCP::Server::ChatServer m_Server;
         std::vector<std::string> m_Messages;
         moodycamel::ConcurrentQueue<std::string> m_MsgQueue;
     public:

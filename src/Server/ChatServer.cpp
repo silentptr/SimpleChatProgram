@@ -3,26 +3,13 @@
 // references:
 // https://www.boost.org/doc/libs/1_88_0/doc/html/boost_asio/example/cpp20/coroutines/echo_server.cpp
 
+#define SILENT_CLOSE_SOCK(sock) try{sock.shutdown(boost::asio::socket_base::shutdown_both);}catch(...){}try{sock.close();}catch(...){}
+
 namespace SCP::Server
 {
-    ChatServerEventHandler::ChatServerEventHandler() noexcept { }
-    ChatServerEventHandler::~ChatServerEventHandler() noexcept { }
-    void ChatServerEventHandler::OnServerStart(std::optional<std::string>) { }
-    void ChatServerEventHandler::OnServerStop(std::optional<std::string>) { }
-    void ChatServerEventHandler::OnChatMessage(std::string) { }
-
     Client::~Client()
     {
-        try
-        {
-            m_Socket.shutdown(boost::asio::socket_base::shutdown_both);
-        }
-        catch (...) { }
-        try
-        {
-            m_Socket.close();
-        }
-        catch (...) { }
+        SILENT_CLOSE_SOCK(m_Socket)
     }
 
     boost::asio::awaitable<void> Client::DoRead()
@@ -59,10 +46,10 @@ namespace SCP::Server
 
     boost::asio::awaitable<void> Client::SendMessage(std::string msg)
     {
-        unsigned char buffer[65535+2];
-        boost::endian::store_big_u16(buffer, msg.size());
-        std::memcpy(buffer + 2, msg.c_str(), msg.size());
-        co_await boost::asio::async_write(m_Socket, boost::asio::buffer(buffer, msg.size() + 2), boost::asio::use_awaitable);
+        std::unique_ptr<unsigned char[]> buffer = std::make_unique<unsigned char[]>(65535+2);
+        boost::endian::store_big_u16(buffer.get(), msg.size());
+        std::memcpy(buffer.get() + 2, msg.c_str(), std::clamp(msg.size(), static_cast<std::size_t>(1), static_cast<std::size_t>(65535)));
+        co_await boost::asio::async_write(m_Socket, boost::asio::buffer(buffer.get(), msg.size() + 2), boost::asio::use_awaitable);
     }
 
     std::shared_ptr<Client> Client::Create(std::shared_ptr<ChatRoom> cr, boost::uuids::uuid uuid, std::string name, boost::asio::ip::tcp::socket s)
@@ -77,16 +64,7 @@ namespace SCP::Server
 
         if (error != boost::system::errc::success || write != uuid.size())
         {
-            try
-            {
-                sock.shutdown(boost::asio::socket_base::shutdown_both);
-            }
-            catch(...){ }
-            try
-            {
-                sock.close();
-            }
-            catch(...){ }
+            SILENT_CLOSE_SOCK(sock)
             
             co_return;
         }
@@ -108,7 +86,7 @@ namespace SCP::Server
 
     boost::asio::awaitable<void> ChatRoom::BroadcastMessage(std::string msg)
     {
-        m_EventHandler.OnChatMessage(msg);
+        m_ChatServer->OnChatMessage(msg);
         
         for (auto& c : m_Clients)
         {
@@ -116,7 +94,7 @@ namespace SCP::Server
         }
     }
 
-    ChatServer::ChatServer(ChatServerEventHandler& h) : m_IOCtx(1), m_Running(false), m_EventHandler(h), m_ChatRoom(ChatRoom::Create(m_EventHandler)), m_Acceptor(m_IOCtx)
+    ChatServer::ChatServer() : m_IOCtx(1), m_Running(false), m_ChatRoom(ChatRoom::Create(this)), m_Acceptor(m_IOCtx)
     {
         
     }
@@ -140,7 +118,7 @@ namespace SCP::Server
 
         if (ec != boost::system::errc::success)
         {
-            m_EventHandler.OnServerStart(ec.message());
+            OnServerStart(ec.message());
             return true;
         }
 
@@ -148,7 +126,7 @@ namespace SCP::Server
 
         if (ec != boost::system::errc::success)
         {
-            m_EventHandler.OnServerStart(ec.message());
+            OnServerStart(ec.message());
             return true;
         }
 
@@ -156,7 +134,7 @@ namespace SCP::Server
         m_Running.store(true);
         DoAccept();
         m_ServerThread = std::jthread([&](){ m_IOCtx.restart(); m_IOCtx.run(); });
-        m_EventHandler.OnServerStart(std::nullopt);
+        OnServerStart(std::nullopt);
         return true;
     }
 
@@ -199,16 +177,7 @@ namespace SCP::Server
 
         if (error != boost::system::errc::success || read != 28 || std::memcmp(m_Header, buffer, 8) != 0)
         {
-            try
-            {
-                sock.shutdown(boost::asio::socket_base::shutdown_both);
-            }
-            catch(...){ }
-            try
-            {
-                sock.close();
-            }
-            catch(...){ }
+            SILENT_CLOSE_SOCK(sock)
             co_return;
         }
 

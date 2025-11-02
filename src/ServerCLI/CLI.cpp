@@ -1,10 +1,10 @@
 #include "SCP/ServerCLI/CLI.h"
 
-#include <notcurses/notcurses.h>
+#include <ncurses.h>
 
 namespace SCP::ServerCLI
 {
-    CLI::CLI() : m_Server(*this)
+    CLI::CLI()
     {
         initscr();
         m_Messages.reserve(255);
@@ -13,6 +13,12 @@ namespace SCP::ServerCLI
     CLI::~CLI()
     {
         endwin();
+    }
+
+    void CLI::WaitForCallback()
+    {
+        std::unique_lock lock(m_Mutex);
+        m_CondVar.wait(lock, [this]{return !m_Waiting;});
     }
 
     void CLI::Run()
@@ -46,13 +52,10 @@ namespace SCP::ServerCLI
         clear();
         printw("Starting server on port %hu...\n", port);
         refresh();
-        m_EventFinished = false;
-        m_Server.Start(port);
 
-        while (!m_EventFinished.load())
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        m_Waiting = true;
+        Start(port);
+        WaitForCallback();
 
         if (m_ErrMsg.has_value())
         {
@@ -64,7 +67,7 @@ namespace SCP::ServerCLI
 
         halfdelay(2);
 
-        while (m_Server.IsRunning())
+        while (IsRunning())
         {
             std::string msg;
             
@@ -112,6 +115,9 @@ namespace SCP::ServerCLI
             catch (...) { }
         }
 
+        Stop();
+        WaitForCallback();
+
         if (m_ErrMsg.has_value())
         {
             nodelay(stdscr, FALSE);
@@ -124,13 +130,22 @@ namespace SCP::ServerCLI
 
     void CLI::OnServerStart(std::optional<std::string> err)
     {
-        m_ErrMsg = err;
-        m_EventFinished = true;
+        m_ErrMsg = std::move(err);
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Waiting = false;
+        }
+        m_CondVar.notify_one();
     }
 
     void CLI::OnServerStop(std::optional<std::string> err)
     {
-        m_ErrMsg = err;
+        m_ErrMsg = std::move(err);
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Waiting = false;
+        }
+        m_CondVar.notify_one();
     }
 
     void CLI::OnChatMessage(std::string msg)
