@@ -30,7 +30,7 @@ namespace SCP::Client
 
             if (connectError != boost::system::errc::success)
             {
-                OnConnect(std::unexpected(connectError.message()));
+                OnConnect(connectError.message());
                 co_return;
             }
 
@@ -43,7 +43,7 @@ namespace SCP::Client
             if (handshakeError != boost::system::errc::success || written != sizeof(buffer))
             {
                 SilentSockClose();
-                OnConnect(std::unexpected(handshakeError.message()));
+                OnConnect(handshakeError.message());
                 co_return;
             }
 
@@ -53,7 +53,7 @@ namespace SCP::Client
             if (readError != boost::system::errc::success || readLen != 16)
             {
                 SilentSockClose();
-                OnConnect(std::unexpected(readError.message()));
+                OnConnect(readError.message());
                 co_return;
             }
 
@@ -80,7 +80,7 @@ namespace SCP::Client
                 co_return;
             }
 
-            std::uint16_t msgLen = boost::endian::load_big_u16(m_Buffer);
+            std::uint16_t msgLen = boost::endian::load_big_u16(m_Buffer.data());
             auto [msgError, msgReadLen] = co_await m_Socket.async_read_some(boost::asio::buffer(m_Buffer, msgLen), boost::asio::as_tuple(boost::asio::use_awaitable));
 
             if (msgError != boost::system::errc::success || msgReadLen != msgLen)
@@ -89,7 +89,7 @@ namespace SCP::Client
                 co_return;
             }
 
-            OnChatMessage(std::string(reinterpret_cast<char*>(m_Buffer), msgLen));
+            OnChatMessage(std::string(reinterpret_cast<char*>(m_Buffer.data()), msgLen));
         }
 
         Stop();
@@ -137,7 +137,7 @@ namespace SCP::Client
         if (m_State.compare_exchange_strong(expected, ChatClientState::Inactive))
         {
             SilentSockClose();
-            OnDisconnect(std::unexpected(std::string(err)));
+            OnDisconnect(std::string(err));
             try { m_IOCtx.stop(); } catch (...) { }
             return true;
         }
@@ -154,7 +154,7 @@ namespace SCP::Client
         if (m_State.compare_exchange_strong(expected, ChatClientState::Inactive))
         {
             SilentSockClose();
-            OnDisconnect({});
+            OnDisconnect(std::nullopt);
             try { m_IOCtx.stop(); } catch (...) { }
             return true;
         }
@@ -165,7 +165,7 @@ namespace SCP::Client
     }
 
     ChatClient::ChatClient() :
-    m_IOCtx(1), m_Resolver(m_IOCtx), m_Socket(m_IOCtx), m_State(ChatClientState::Inactive)
+    m_IOCtx(1), m_Resolver(m_IOCtx), m_Socket(m_IOCtx), m_State(ChatClientState::Inactive), m_Buffer(65535)
     {
         
     }

@@ -5,6 +5,7 @@
 #include <string>
 #include <cstring>
 #include <vector>
+#include <atomic>
 
 #include <boost/lexical_cast.hpp>
 
@@ -17,7 +18,7 @@ namespace SCP::ClientCLI
     class CLI : public SCP::Client::ChatClient
     {
     private:
-        std::atomic_bool m_EventFinished;
+        std::atomic_bool m_ConnectDone;
         std::optional<std::string> m_ErrMsg;
 
         std::vector<std::string> m_Messages;
@@ -30,9 +31,9 @@ namespace SCP::ClientCLI
 
         void Run();
 
-        void OnConnect(std::expected<void, std::string>) override;
+        void OnConnect(std::optional<std::string>) override;
         void OnChatMessage(std::string) override;
-        void OnDisconnect(std::expected<void, std::string>) override;
+        void OnDisconnect(std::optional<std::string>) override;
     };
 }
 

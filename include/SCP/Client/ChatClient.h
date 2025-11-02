@@ -8,8 +8,7 @@
 #include <optional>
 #include <thread>
 #include <iostream>
-#include <expected>
-#include <algorithm>
+#include <optional>
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -48,7 +47,7 @@ namespace SCP::Client
         boost::asio::awaitable<void> DoRead();
         boost::asio::awaitable<void> DoWrite(std::string);
 
-        unsigned char m_Buffer[65535];
+        std::vector<unsigned char> m_Buffer;
 
         bool StopWithError(const std::string_view&);
     public:
@@ -62,9 +61,9 @@ namespace SCP::Client
 
         void SendMessage(const std::string_view&);
 
-        virtual void OnConnect(std::expected<void, std::string>){}
+        virtual void OnConnect(std::optional<std::string>){}
         virtual void OnChatMessage(std::string){}
-        virtual void OnDisconnect(std::expected<void, std::string>){}
+        virtual void OnDisconnect(std::optional<std::string>){}
     };
 }
 

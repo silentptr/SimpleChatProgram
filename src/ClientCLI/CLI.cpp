@@ -63,8 +63,7 @@ namespace SCP::ClientCLI
         std::memset(inputBuffer, 0, sizeof(inputBuffer));
         getnstr(inputBuffer, 19);
         username = inputBuffer;
-
-        m_EventFinished = false;
+        m_ConnectDone = false;
         Start(ip, port, username);
 
         clear();
@@ -73,7 +72,7 @@ namespace SCP::ClientCLI
         refresh();
         nodelay(stdscr, TRUE);
 
-        while (!m_EventFinished.load())
+        while (!m_ConnectDone)
         {
             int thing = getch();
 
@@ -82,7 +81,7 @@ namespace SCP::ClientCLI
                 return;
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
 
         nodelay(stdscr, FALSE);
@@ -162,11 +161,7 @@ namespace SCP::ClientCLI
                 }
             }
 
-            try
-            {
-                std::this_thread::yield();
-            }
-            catch (...) { }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
@@ -208,14 +203,10 @@ namespace SCP::ClientCLI
         } while (!exit);
     }
 
-    void CLI::OnConnect(std::expected<void, std::string> str)
+    void CLI::OnConnect(std::optional<std::string> str)
     {
-        if (!str.has_value())
-        {
-            m_ErrMsg = str.error();
-        }
-        
-        m_EventFinished = true;
+        m_ErrMsg = std::move(str);
+        m_ConnectDone = true;
     }
 
     void CLI::OnChatMessage(std::string msg)
@@ -223,11 +214,8 @@ namespace SCP::ClientCLI
         m_MsgQueue.enqueue(std::move(msg));
     }
 
-    void CLI::OnDisconnect(std::expected<void, std::string> str)
+    void CLI::OnDisconnect(std::optional<std::string> str)
     {
-        if (!str.has_value())
-        {
-            m_ErrMsg = str.error();
-        }
+        m_ErrMsg = std::move(str);
     }
 }
