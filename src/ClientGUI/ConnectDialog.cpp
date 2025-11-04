@@ -45,11 +45,49 @@ namespace SCP::ClientGUI
 
     void ConnectDialog::OnCancel(wxCommandEvent&)
     {
+        m_IP->Clear();
         Close();
     }
 
     void ConnectDialog::OnConnect(wxCommandEvent&)
     {
+        Close();
+    }
+
+    std::optional<ConnectInfo> ConnectDialog::GetConnectInfo()
+    {
+        if (m_IP->IsEmpty()) { return std::nullopt; }
         
+        std::string ip = m_IP->GetValue().ToStdString();
+
+        if (ip.length() < 3)
+        {
+            return std::nullopt;
+        }
+
+        std::uint16_t port;
+        unsigned long l;
+
+        try
+        {
+            l = std::stoul(m_Port->GetValue().ToStdString());
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+        
+        if (l > 65535) { return std::nullopt; }
+
+        port = static_cast<std::uint16_t>(l);
+
+        std::string username = m_Username->GetValue().ToStdString();
+
+        if (username.length() < 3 || username.length() > 30)
+        {
+            return std::nullopt;
+        }
+
+        return std::optional<ConnectInfo>({std::move(ip), port, std::move(username)});
     }
 }

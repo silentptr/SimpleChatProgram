@@ -1,8 +1,10 @@
 #include "SCP/ClientGUI/MainUI.h"
 
+wxDEFINE_EVENT(MY_NEW_TYPE, wxCommandEvent);
+
 namespace SCP::ClientGUI
 {
-    MainUI::MainUI() :
+    MainUI::MainUI() : m_Connecting(false),
     wxFrame(NULL, wxID_ANY, "Simple Chat Program", wxDefaultPosition, wxSize(800, 600), wxDEFAULT_FRAME_STYLE & ~(wxRESIZE_BORDER | wxMAXIMIZE_BOX))
     {
         wxMenuBar* menuBar = new wxMenuBar;
@@ -23,7 +25,7 @@ namespace SCP::ClientGUI
         wxFlexGridSizer* sizer = new wxFlexGridSizer(2, 2, 3, 3);
         panel->SetSizer(vertSizer);
 
-        m_ChatBox = new wxTextCtrl(panel, wxID_ANY, "> Welcome!", wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY);
+        m_ChatBox = new wxTextCtrl(panel, wxID_ANY, "> Welcome!\n", wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY);
         m_InputBox = new wxTextCtrl(panel, SCP_MAINUI_INPUTBOX, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
         Bind(wxEVT_TEXT_ENTER, &MainUI::OnTextInput, this, SCP_MAINUI_INPUTBOX);
         m_SendButton = new wxButton(panel, SCP_MAINUI_SENDBTN, "Send");
@@ -34,17 +36,33 @@ namespace SCP::ClientGUI
         horiSizer->Add(m_SendButton, 0, wxRIGHT | wxDOWN, 6);
         vertSizer->Add(horiSizer, 0, wxEXPAND);
 
+        Bind(MY_NEW_TYPE, &MainUI::OnClientConnect, this, SCP_MAINUI_EVT_CONNECT);
+        Bind(MY_NEW_TYPE, &MainUI::OnClientMsg, this, SCP_MAINUI_EVT_CHATMSG);
+        Bind(MY_NEW_TYPE, &MainUI::OnClientDisconnect, this, SCP_MAINUI_EVT_DISCONNECT);
+
         CenterOnScreen();
     }
 
-    void MainUI::SendMessage(const std::string_view& msg)
+    void MainUI::SendChatMessage(const std::string_view& msg)
     {
-
+        SendMessage(msg);
     }
 
     void MainUI::OnConnectButton(wxCommandEvent&)
     {
-        (new ConnectDialog(this))->ShowModal();
+        ConnectDialog* dialog = new ConnectDialog(this);
+        dialog->ShowModal();
+        m_ConnectInfo = dialog->GetConnectInfo();
+
+        if (m_ConnectInfo)
+        {
+            if (GetState() == SCP::Client::ChatClientState::Connected) { Stop(); }
+
+            m_ChatBox->AppendText("Connecting to " + m_ConnectInfo->m_IP + ":" + std::to_string(m_ConnectInfo->m_Port) + " with the username "
+            + m_ConnectInfo->m_Username + "...\n");
+            Start(m_ConnectInfo->m_IP, m_ConnectInfo->m_Port, m_ConnectInfo->m_Username);
+            m_ConnectInfo = std::nullopt;
+        }
     }
 
     void MainUI::OnDisconnectButton(wxCommandEvent&)
@@ -54,28 +72,68 @@ namespace SCP::ClientGUI
 
     void MainUI::OnTextInput(wxCommandEvent&)
     {
-        SendMessage(m_InputBox->GetValue().ToStdString());
+        SendChatMessage(m_InputBox->GetValue().ToStdString());
         m_InputBox->Clear();
     }
 
     void MainUI::OnSendMessage(wxCommandEvent&)
     {
-        SendMessage(m_InputBox->GetValue().ToStdString());
+        SendChatMessage(m_InputBox->GetValue().ToStdString());
         m_InputBox->Clear();
+    }
+
+    void MainUI::OnClientConnect(wxCommandEvent& e)
+    {
+        m_Connecting = false;
+        m_ChatBox->AppendText("> " + e.GetString() + "\n");
+    }
+
+    void MainUI::OnClientMsg(wxCommandEvent& e)
+    {
+        m_ChatBox->AppendText("> " + e.GetString() + "\n");
+    }
+
+    void MainUI::OnClientDisconnect(wxCommandEvent& e)
+    {
+        m_ChatBox->AppendText("> " + e.GetString() + "\n");
     }
 
     void MainUI::OnConnect(std::optional<std::string> err)
     {
+        wxCommandEvent* e = new wxCommandEvent(MY_NEW_TYPE, SCP_MAINUI_EVT_CONNECT);
 
+        if (err)
+        {
+            e->SetString((*err).c_str());
+        }
+        else
+        {
+            e->SetString("Successfully connected!");
+        }
+        
+        wxQueueEvent(this, e);
     }
 
     void MainUI::OnChatMessage(std::string msg)
     {
-
+        wxCommandEvent* e = new wxCommandEvent(MY_NEW_TYPE, SCP_MAINUI_EVT_CHATMSG);
+        e->SetString(msg.c_str());
+        wxQueueEvent(this, e);
     }
 
     void MainUI::OnDisconnect(std::optional<std::string> err)
     {
+        wxCommandEvent* e = new wxCommandEvent(MY_NEW_TYPE, SCP_MAINUI_EVT_DISCONNECT);
 
+        if (err)
+        {
+            e->SetString((*err).c_str());
+        }
+        else
+        {
+            e->SetString("Successfully disconnected!");
+        }
+        
+        wxQueueEvent(this, e);
     }
 }
