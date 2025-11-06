@@ -64,7 +64,7 @@ namespace SCP::ClientCLI
         getnstr(inputBuffer, 19);
         username = inputBuffer;
         m_ConnectDone = false;
-        Start(ip, port, username);
+        Connect(ip, port, username);
 
         clear();
         printw("Connecting to %s:%hu...\n", ip.c_str(), port);
@@ -209,7 +209,7 @@ namespace SCP::ClientCLI
         m_ConnectDone = true;
     }
 
-    void CLI::OnChatMessage(std::string msg)
+    void CLI::OnMessage(std::string msg)
     {
         m_MsgQueue.enqueue(std::move(msg));
     }

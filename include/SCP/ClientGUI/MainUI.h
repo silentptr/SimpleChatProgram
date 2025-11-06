@@ -33,8 +33,7 @@ namespace SCP::ClientGUI
 
         void SendChatMessage(const std::string_view&);
 
-        std::optional<ConnectInfo> m_ConnectInfo;
-        bool m_Connecting;
+        //bool m_Connecting;
     public:
         MainUI();
 
@@ -49,7 +48,7 @@ namespace SCP::ClientGUI
         void OnClientDisconnect(wxCommandEvent&);
 
         void OnConnect(std::optional<std::string>) override;
-        void OnChatMessage(std::string) override;
+        void OnMessage(std::string) override;
         void OnDisconnect(std::optional<std::string>) override;
     };
 }

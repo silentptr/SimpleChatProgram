@@ -32,7 +32,7 @@ namespace SCP::ClientCLI
         void Run();
 
         void OnConnect(std::optional<std::string>) override;
-        void OnChatMessage(std::string) override;
+        void OnMessage(std::string) override;
         void OnDisconnect(std::optional<std::string>) override;
     };
 }

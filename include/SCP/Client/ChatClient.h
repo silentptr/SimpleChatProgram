@@ -30,8 +30,6 @@ namespace SCP::Client
     private:
         static constexpr char m_Header[8] = {2, 3, 1, 77, 30, 115, 33, 49};
 
-        //ChatClientEventHandler& m_EventHandler;
-    
         boost::asio::io_context m_IOCtx;
         std::jthread m_Thread;
         boost::asio::ip::tcp::resolver m_Resolver;
@@ -56,13 +54,15 @@ namespace SCP::Client
 
         inline ChatClientState GetState() const noexcept { return m_State.load(); }
 
-        bool Start(const std::string_view&, std::uint16_t, const std::string_view&);
-        bool Stop();
+        // returns true if a connection begins, false if already connecting/already connected
+        bool Connect(const std::string_view&, std::uint16_t, const std::string_view&);
+        // returns true if it ended a connection, false if it wasn't connected
+        bool Disconnect();
 
         void SendMessage(const std::string_view&);
 
         virtual void OnConnect(std::optional<std::string>){}
-        virtual void OnChatMessage(std::string){}
+        virtual void OnMessage(std::string){}
         virtual void OnDisconnect(std::optional<std::string>){}
     };
 }

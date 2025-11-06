@@ -4,7 +4,7 @@ wxDEFINE_EVENT(MY_NEW_TYPE, wxCommandEvent);
 
 namespace SCP::ClientGUI
 {
-    MainUI::MainUI() : m_Connecting(false),
+    MainUI::MainUI() :
     wxFrame(NULL, wxID_ANY, "Simple Chat Program", wxDefaultPosition, wxSize(800, 600), wxDEFAULT_FRAME_STYLE & ~(wxRESIZE_BORDER | wxMAXIMIZE_BOX))
     {
         wxMenuBar* menuBar = new wxMenuBar;
@@ -25,7 +25,7 @@ namespace SCP::ClientGUI
         wxFlexGridSizer* sizer = new wxFlexGridSizer(2, 2, 3, 3);
         panel->SetSizer(vertSizer);
 
-        m_ChatBox = new wxTextCtrl(panel, wxID_ANY, "> Welcome!\n", wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY);
+        m_ChatBox = new wxTextCtrl(panel, wxID_ANY, "Welcome!\n", wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY);
         m_InputBox = new wxTextCtrl(panel, SCP_MAINUI_INPUTBOX, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
         Bind(wxEVT_TEXT_ENTER, &MainUI::OnTextInput, this, SCP_MAINUI_INPUTBOX);
         m_SendButton = new wxButton(panel, SCP_MAINUI_SENDBTN, "Send");
@@ -50,24 +50,28 @@ namespace SCP::ClientGUI
 
     void MainUI::OnConnectButton(wxCommandEvent&)
     {
+        if (GetState() == SCP::Client::ChatClientState::Connecting)
+        {
+            wxMessageBox("already connecting", "SCP", 5L, this);
+            return;
+        }
+        
         ConnectDialog* dialog = new ConnectDialog(this);
         dialog->ShowModal();
-        m_ConnectInfo = dialog->GetConnectInfo();
+        auto connectInfo = dialog->GetConnectInfo();
 
-        if (m_ConnectInfo)
+        if (connectInfo)
         {
-            if (GetState() == SCP::Client::ChatClientState::Connected) { Stop(); }
-
-            m_ChatBox->AppendText("Connecting to " + m_ConnectInfo->m_IP + ":" + std::to_string(m_ConnectInfo->m_Port) + " with the username "
-            + m_ConnectInfo->m_Username + "...\n");
-            Start(m_ConnectInfo->m_IP, m_ConnectInfo->m_Port, m_ConnectInfo->m_Username);
-            m_ConnectInfo = std::nullopt;
+            ChatClient::Disconnect();
+            m_ChatBox->AppendText("Connecting to " + connectInfo->m_IP + ":" + std::to_string(connectInfo->m_Port) + " with the username "
+            + connectInfo->m_Username + "...\n");
+            ChatClient::Connect(connectInfo->m_IP, connectInfo->m_Port, connectInfo->m_Username);
         }
     }
 
     void MainUI::OnDisconnectButton(wxCommandEvent&)
     {
-
+        ChatClient::Disconnect();
     }
 
     void MainUI::OnTextInput(wxCommandEvent&)
@@ -84,37 +88,36 @@ namespace SCP::ClientGUI
 
     void MainUI::OnClientConnect(wxCommandEvent& e)
     {
-        m_Connecting = false;
-        m_ChatBox->AppendText("> " + e.GetString() + "\n");
+        if (e.GetInt())
+        {
+            m_ChatBox->AppendText(e.GetString() + "\n");
+        }
     }
 
     void MainUI::OnClientMsg(wxCommandEvent& e)
     {
-        m_ChatBox->AppendText("> " + e.GetString() + "\n");
+        m_ChatBox->AppendText(e.GetString() + "\n");
     }
 
     void MainUI::OnClientDisconnect(wxCommandEvent& e)
     {
-        m_ChatBox->AppendText("> " + e.GetString() + "\n");
+        m_ChatBox->AppendText(e.GetString() + "\n");
     }
 
     void MainUI::OnConnect(std::optional<std::string> err)
     {
         wxCommandEvent* e = new wxCommandEvent(MY_NEW_TYPE, SCP_MAINUI_EVT_CONNECT);
+        e->SetInt(err.has_value());
 
         if (err)
         {
-            e->SetString((*err).c_str());
+            e->SetString("Could not connect to server: " + std::string((*err).c_str()));
         }
-        else
-        {
-            e->SetString("Successfully connected!");
-        }
-        
+
         wxQueueEvent(this, e);
     }
 
-    void MainUI::OnChatMessage(std::string msg)
+    void MainUI::OnMessage(std::string msg)
     {
         wxCommandEvent* e = new wxCommandEvent(MY_NEW_TYPE, SCP_MAINUI_EVT_CHATMSG);
         e->SetString(msg.c_str());
@@ -127,11 +130,11 @@ namespace SCP::ClientGUI
 
         if (err)
         {
-            e->SetString((*err).c_str());
+            e->SetString("Disconnected from server with error: " + std::string((*err).c_str()));
         }
         else
         {
-            e->SetString("Successfully disconnected!");
+            e->SetString("Disconnected from server");
         }
         
         wxQueueEvent(this, e);
