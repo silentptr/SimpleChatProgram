@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(SimpleChatProgram VERSION 1.1.0 LANGUAGES CXX)
+project(SimpleChatProgram VERSION 1.2.0 LANGUAGES CXX)
 
 option(BUILD_CLIENT_CLI "Build the client CLI" OFF)
 option(BUILD_SERVER_CLI "Build the server CLI" ON)
