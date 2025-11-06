@@ -17,7 +17,7 @@ if(BUILD_CLIENT_CLI OR BUILD_SERVER_CLI)
 endif()
 
 if(BUILD_CLIENT_GUI)
-    find_package(wxWidgets 3.3 REQUIRED COMPONENTS core base)
+    find_package(wxWidgets 3.28 REQUIRED COMPONENTS core base)
     if(wxWidgets_USE_FILE)
         include(${wxWidgets_USE_FILE})
     endif()
